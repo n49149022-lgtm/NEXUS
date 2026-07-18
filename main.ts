@@ -1,5 +1,5 @@
 // ============================================================================
-// NEXUS MARKETING AGENTS v5.0 // DENO DEPLOY (SMART KV FALLBACK)
+// NEXUS MARKETING AGENTS v5.0 // DENO DEPLOY + ROBOKASSA INTEGRATION
 // ============================================================================
 
 // 1. УМНАЯ ИНИЦИАЛИЗАЦИЯ KV (с защитой от падения сборки в Preview)
@@ -17,7 +17,6 @@ async function getKv(): Promise<Deno.Kv> {
   return kvInstance;
 }
 
-// Заглушка в памяти для режимов без привязанной KV
 function createMockKv() {
   const store = new Map<string, any>();
   return {
@@ -40,7 +39,6 @@ function createMockKv() {
   };
 }
 
-// Получаем экземпляр (реальный или мок)
 const kv = await getKv();
 
 // ============================================================================
@@ -55,7 +53,17 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 const uuid = () => crypto.randomUUID();
 
 // ============================================================================
-// 3. МОДУЛИ (Анонимизация, RAG)
+// 3. MD5 (Требуется Робокассой для подписи)
+// ============================================================================
+async function md5(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('MD5', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ============================================================================
+// 4. МОДУЛИ (Анонимизация, RAG)
 // ============================================================================
 const Anonymizer = {
   patterns: [
@@ -141,7 +149,7 @@ const RAGEngine = {
 };
 
 // ============================================================================
-// 4. ОБРАБОТЧИК ЗАПРОСОВ
+// 5. ОБРАБОТЧИК ЗАПРОСОВ
 // ============================================================================
 async function handleRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -149,8 +157,12 @@ async function handleRequest(req: Request): Promise<Response> {
   const path = url.pathname;
 
   try {
-    if (req.method === "GET" && path === "/api/health") return json({ status: "ok", runtime: "Deno Deploy", kv_mode: kvInstance ? "Real" : "Mock" });
+    // Health Check
+    if (req.method === "GET" && path === "/api/health") {
+      return json({ status: "ok", runtime: "Deno Deploy", kv_mode: kvInstance ? "Real" : "Mock", robokassa: "integrated" });
+    }
 
+    // === ЛИЦЕНЗИИ ===
     if (req.method === "POST" && path === "/api/licenses/activate") {
       const body = await req.json() as { key: string; device_fingerprint: string };
       const key = body.key.toUpperCase().trim();
@@ -176,6 +188,7 @@ async function handleRequest(req: Request): Promise<Response> {
       return json({ valid: true, plan: res.value.plan, expiresAt: res.value.expiresAt });
     }
 
+    // === АККАУНТЫ ===
     if (req.method === "POST" && path === "/api/accounts/selfemployed") {
       const body = await req.json() as AccountSE;
       const id = uuid();
@@ -210,6 +223,7 @@ async function handleRequest(req: Request): Promise<Response> {
       return json({ status: "success", message: "Purged" });
     }
 
+    // === МИССИИ ===
     if (req.method === "POST" && path === "/api/missions") {
       const body = await req.json();
       const id = uuid();
@@ -217,11 +231,13 @@ async function handleRequest(req: Request): Promise<Response> {
       return json({ status: "success", id });
     }
 
+    // === АНОНИМИЗАЦИЯ ===
     if (req.method === "POST" && path === "/api/anonymize") {
       const { text } = await req.json() as { text: string };
       return json({ original_length: text.length, anonymized: Anonymizer.anonymize(text) });
     }
 
+    // === RAG ===
     if (req.method === "POST" && path === "/api/index/build") {
       const { doc_id, text } = await req.json() as { doc_id: string; text: string };
       await RAGEngine.buildIndex(doc_id, text);
@@ -233,28 +249,120 @@ async function handleRequest(req: Request): Promise<Response> {
       return json({ results: await RAGEngine.search(query, top_k) });
     }
 
+    // === ЛОГИ ===
     if (req.method === "POST" && path === "/api/logs/parse") {
       const { log_text } = await req.json() as { log_text: string };
       return json({ parsed: "mock_parsed_data", entriesCount: log_text.split("\n").length });
     }
 
+    // ====================================================================
+    // === РОБОКАССА: СОЗДАНИЕ ПЛАТЕЖА ===
+    // ====================================================================
     if (req.method === "POST" && path === "/api/payments/create") {
-      const body = await req.json() as { plan: string; amount: number | string };
-      const amount = typeof body.amount === "string" ? parseFloat(body.amount) : (body.amount || 4999);
-      const paymentId = `pay_${uuid().replace(/-/g, "").substring(0, 16)}`;
-      const licenseKey = `NEXUS-${(body.plan || "pro").toUpperCase()}-${uuid().replace(/-/g, "").substring(0, 8).toUpperCase()}`;
-      const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+      const body = await req.json() as { user_name: string; amount: number; inv_id: string; email?: string };
       
-      await kv.set(["payments", paymentId], { paymentId, amount, plan: body.plan, status: "succeeded" });
-      await kv.set(["licenses", licenseKey], { key: licenseKey, plan: body.plan, expiresAt, deviceFingerprint: null, activatedAt: new Date().toISOString(), userId: null });
+      const login = Deno.env.get("ROBOKASSA_LOGIN") || "your_login";
+      const pass1 = Deno.env.get("ROBOKASSA_PASSWORD_1") || "your_password1";
+      const amount = body.amount || 990;
+      const invId = body.inv_id || Date.now().toString();
+      const description = "Подписка NEXUS MARKETING AGENTS на 1 месяц";
+      const email = body.email || "";
+
+      // Формируем подпись: Login:OutSum:InvId:Password1
+      const signatureString = `${login}:${amount}:${invId}:${pass1}`;
+      const signature = await md5(signatureString);
+
+      // Определяем тестовый или боевой режим
+      const isTest = login === "your_login" || login === "test_login";
+      const baseUrl = "https://auth.robokassa.ru/Merchant/Index.aspx";
       
-      return json({ confirmed: true, payment_id: paymentId, license: { key: licenseKey, expires_at: expiresAt } });
+      // Формируем URL оплаты
+      let paymentUrl = `${baseUrl}?MerchantLogin=${encodeURIComponent(login)}&OutSum=${amount}&InvoiceID=${encodeURIComponent(invId)}&Description=${encodeURIComponent(description)}&SignatureValue=${signature}`;
+      
+      if (email) paymentUrl += `&Email=${encodeURIComponent(email)}`;
+      if (isTest) paymentUrl += `&IsTest=1`;
+
+      console.log(`[PAYMENT] Created invoice ${invId} for ${amount} RUB (user: ${body.user_name})`);
+
+      return json({ 
+        success: true, 
+        payment_url: paymentUrl, 
+        inv_id: invId,
+        amount: amount,
+        is_test: isTest
+      });
     }
 
+    // ====================================================================
+    // === РОБОКАССА: ВЕБХУК (Result URL) ===
+    // ====================================================================
+    if (req.method === "POST" && path === "/api/payments/robokassa-result") {
+      const formData = await req.formData();
+      const outSum = (formData.get("OutSum") as string) || "";
+      const invId = (formData.get("InvoiceID") as string) || "";
+      const receivedSignature = (formData.get("SignatureValue") as string) || "";
+      const userEmail = (formData.get("Email") as string) || "unknown";
+
+      const pass2 = Deno.env.get("ROBOKASSA_PASSWORD_2") || "your_password2";
+      
+      // Проверяем подпись: OutSum:InvoiceID:Password2
+      const checkString = `${outSum}:${invId}:${pass2}`;
+      const expectedSignature = await md5(checkString);
+
+      if (receivedSignature.toUpperCase() !== expectedSignature.toUpperCase()) {
+        console.error(`[PAYMENT] Bad signature for invoice ${invId}`);
+        return new Response("bad sign", { status: 400 });
+      }
+
+      console.log(`[PAYMENT] ✅ Payment confirmed! Invoice: ${invId}, Sum: ${outSum}, Email: ${userEmail}`);
+
+      // Подпись верна — начисляем подписку
+      const licenseKey = `NEXUS-PRO-${crypto.randomUUID().replace(/-/g, "").substring(0, 8).toUpperCase()}`;
+      const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+      
+      await kv.set(["licenses", licenseKey], { 
+        key: licenseKey, 
+        plan: "pro", 
+        expiresAt, 
+        deviceFingerprint: userEmail, 
+        activatedAt: new Date().toISOString(), 
+        userId: null 
+      });
+
+      await kv.set(["payments", invId], { 
+        invId, 
+        amount: parseFloat(outSum), 
+        plan: "pro", 
+        status: "succeeded", 
+        email: userEmail,
+        date: new Date().toISOString() 
+      });
+
+      // Робокасса требует строго такой ответ
+      return new Response(`OK${invId}`, { status: 200 });
+    }
+
+    // ====================================================================
+    // === РОБОКАССА: SUCCESS URL (редирект после оплаты) ===
+    // ====================================================================
+    if (req.method === "GET" && path === "/api/payments/success") {
+      const outSum = url.searchParams.get("OutSum") || "";
+      const invId = url.searchParams.get("InvoiceID") || "";
+      return json({ 
+        status: "success", 
+        message: "Оплата успешно завершена", 
+        inv_id: invId, 
+        amount: outSum,
+        redirect: "https://n49149022-lgtm.github.io/NEXUS/?payment=success"
+      });
+    }
+
+    // === ЭКСПОРТ ===
     if (req.method === "GET" && path.startsWith("/api/export/")) {
       return json({ type: path.split("/").pop(), timestamp: new Date().toISOString(), data: "mock_export" });
     }
 
+    // === ЗАГРУЗКА ФАЙЛОВ ===
     if (req.method === "POST" && path === "/api/documents/upload") {
       const formData = await req.formData();
       const file = formData.get("file");
