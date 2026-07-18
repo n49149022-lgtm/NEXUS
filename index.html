@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS // MARKETING AGENTS v5.0</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --neon-green: #00ff41; --neon-cyan: #00f0ff; --neon-pink: #ff006e; --neon-gold: #ffd700;
+            --dark-bg: #0a0a0f; --dark-surface: #0d1117; --dark-card: #161b22;
+            --glow-green: 0 0 10px rgba(0,255,65,0.5), 0 0 20px rgba(0,255,65,0.3);
+        }
+        body { font-family: 'Share Tech Mono', monospace; background: var(--dark-bg); color: var(--neon-green); min-height: 100vh; overflow-x: hidden; }
+        .cyber-grid { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-image: linear-gradient(rgba(0,255,65,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,65,0.03) 1px, transparent 1px); background-size: 50px 50px; pointer-events: none; z-index: 0; }
+        .main-container { position: relative; z-index: 10; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        
+        header { border-bottom: 2px solid var(--neon-green); padding: 30px 0; margin-bottom: 40px; text-align: center; }
+        .logo { font-family: 'Orbitron', sans-serif; font-size: 36px; font-weight: 900; letter-spacing: 4px; text-shadow: var(--glow-green); }
+        .logo-sub { font-size: 12px; color: var(--neon-cyan); letter-spacing: 3px; margin-top: 5px; }
+
+        .section { display: none; animation: fadeIn 0.5s ease; }
+        .section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card { background: var(--dark-card); border: 1px solid rgba(0,255,65,0.2); padding: 30px; margin-bottom: 25px; border-radius: 4px; }
+        .card h2 { font-family: 'Orbitron', sans-serif; color: var(--neon-cyan); margin-bottom: 20px; font-size: 20px; letter-spacing: 2px; }
+        .card p, .card li { color: #aaa; line-height: 1.8; font-size: 14px; margin-bottom: 10px; }
+        .card ul { padding-left: 20px; }
+
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-size: 11px; color: var(--neon-cyan); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+        .cyber-input { width: 100%; padding: 14px; background: rgba(0,0,0,0.5); border: 1px solid rgba(0,255,65,0.3); color: var(--neon-green); font-family: 'Share Tech Mono', monospace; font-size: 16px; border-radius: 4px; }
+        .cyber-input:focus { outline: none; border-color: var(--neon-green); box-shadow: var(--glow-green); }
+
+        .btn { width: 100%; padding: 16px; background: transparent; border: 2px solid var(--neon-green); color: var(--neon-green); font-family: 'Orbitron', sans-serif; font-size: 14px; letter-spacing: 3px; cursor: pointer; transition: all 0.3s; text-transform: uppercase; border-radius: 4px; }
+        .btn:hover { background: rgba(0,255,65,0.1); box-shadow: var(--glow-green); }
+        .btn-primary { background: rgba(0,255,65,0.1); }
+        .btn-danger { border-color: var(--neon-pink); color: var(--neon-pink); }
+        .btn-danger:hover { background: rgba(255,0,110,0.1); box-shadow: 0 0 10px rgba(255,0,110,0.5); }
+        .btn-gold { border-color: var(--neon-gold); color: var(--neon-gold); }
+        .btn-gold:hover { background: rgba(255,215,0,0.1); box-shadow: 0 0 10px rgba(255,215,0,0.5); }
+
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; justify-content: center; }
+        .nav-tab { padding: 10px 20px; background: transparent; border: 1px solid rgba(0,255,65,0.3); color: #666; cursor: pointer; font-family: 'Orbitron'; font-size: 11px; letter-spacing: 2px; transition: 0.3s; }
+        .nav-tab:hover, .nav-tab.active { color: var(--neon-green); border-color: var(--neon-green); background: rgba(0,255,65,0.05); }
+
+        .status-badge { display: inline-block; padding: 5px 15px; border: 1px solid var(--neon-green); color: var(--neon-green); font-size: 12px; letter-spacing: 2px; margin-bottom: 20px; }
+        .status-badge.expired { border-color: var(--neon-pink); color: var(--neon-pink); }
+
+        .price-tag { font-family: 'Orbitron'; font-size: 48px; color: var(--neon-gold); text-align: center; margin: 20px 0; }
+        .price-period { font-size: 14px; color: #888; text-align: center; }
+
+        footer { margin-top: 60px; padding: 40px 0; border-top: 1px solid rgba(0,255,65,0.2); text-align: center; color: #555; font-size: 12px; line-height: 1.8; }
+        footer strong { color: var(--neon-cyan); }
+
+        .alert { padding: 15px; border: 1px solid; margin-bottom: 20px; display: none; font-size: 13px; }
+        .alert-success { border-color: var(--neon-green); color: var(--neon-green); background: rgba(0,255,65,0.05); }
+        .alert-error { border-color: var(--neon-pink); color: var(--neon-pink); background: rgba(255,0,110,0.05); }
+        .alert.show { display: block; }
+    </style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<div class="main-container">
+    <header>
+        <div class="logo">NEXUS</div>
+        <div class="logo-sub">// MARKETING AGENTS v5.0 // NON-COMMERCIAL LICENSE</div>
+    </header>
+
+    <div class="nav-tabs">
+        <button class="nav-tab active" onclick="showSection('onboarding')">1. Регистрация</button>
+        <button class="nav-tab" onclick="showSection('dashboard')">2. Доступ</button>
+        <button class="nav-tab" onclick="showSection('subscription')">3. Подписка</button>
+        <button class="nav-tab" onclick="showSection('legal')">Документы</button>
+        <button class="nav-tab" onclick="showSection('settings')">Настройки</button>
+    </div>
+
+    <!-- 1. РЕГИСТРАЦИЯ И ПРОБНЫЙ ПЕРИОД -->
+    <section id="onboarding" class="section active">
+        <div class="card">
+            <h2>🚀 АКТИВАЦИЯ ПРОБНОГО ПЕРИОДА (1 ДЕНЬ)</h2>
+            <p>Введите ваши данные для получения бесплатного доступа ко всем функциям системы на 24 часа. Коммерческое использование запрещено.</p>
+            <div id="reg-alert" class="alert"></div>
+            <form id="trial-form" onsubmit="activateTrial(event)">
+                <div class="form-group">
+                    <label>Ваше Имя и Фамилия *</label>
+                    <input type="text" class="cyber-input" id="user-name" required placeholder="Иван Иванов">
+                </div>
+                <div class="form-group">
+                    <label>Номер телефона *</label>
+                    <input type="tel" class="cyber-input" id="user-phone" required pattern="[\+]?[0-9\s\-\(\)]{10,20}" placeholder="+7 (999) 000-00-00">
+                </div>
+                <button type="submit" class="btn btn-primary">▶ АКТИВИРОВАТЬ 1 ДЕНЬ БЕСПЛАТНО</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- 2. ДОСТУП (DASHBOARD) -->
+    <section id="dashboard" class="section">
+        <div class="card">
+            <div id="status-display" class="status-badge">СТАТУС: НЕАКТИВЕН</div>
+            <h2>📊 ПАНЕЛЬ УПРАВЛЕНИЯ</h2>
+            <p>Добро пожаловать, <strong id="display-name" style="color:var(--neon-green)">Гость</strong>.</p>
+            <p>Вам доступен пробный период или активная подписка. Система готова к генерации аналитики, кластеризации данных и A/B тестированию.</p>
+            <br>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div style="padding: 20px; background: rgba(0,0,0,0.3); border-left: 3px solid var(--neon-cyan);">
+                    <div style="font-size: 24px; font-family: 'Orbitron';">5</div>
+                    <div style="font-size: 11px; color: #888;">АГЕНТОВ ДОСТУПНО</div>
+                </div>
+                <div style="padding: 20px; background: rgba(0,0,0,0.3); border-left: 3px solid var(--neon-green);">
+                    <div style="font-size: 24px; font-family: 'Orbitron';">∞</div>
+                    <div style="font-size: 11px; color: #888;">ВЫЧИСЛЕНИЙ</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 3. ПОДПИСКА -->
+    <section id="subscription" class="section">
+        <div class="card" style="text-align: center; border-color: var(--neon-gold);">
+            <h2 style="color: var(--neon-gold);">💎 ПОЛНАЯ ПОДПИСКА</h2>
+            <p>Продлите доступ к системе после окончания пробного периода.</p>
+            <div class="price-tag">990 ₽</div>
+            <div class="price-period">в месяц / Некоммерческая лицензия</div>
+            <ul style="text-align: left; max-width: 400px; margin: 30px auto; list-style: none;">
+                <li style="color: #aaa;">✓ Полный доступ ко всем 5 агентам</li>
+                <li style="color: #aaa;">✓ Неограниченные вычисления</li>
+                <li style="color: #aaa;">✓ Экспорт данных в JSON</li>
+                <li style="color: #aaa;">✓ Приоритетная поддержка</li>
+            </ul>
+            <button class="btn btn-gold" onclick="buySubscription()">ОФОРМИТЬ ПОДПИСКУ ЗА 990 ₽</button>
+            <p style="font-size: 11px; color: #666; margin-top: 15px;">Нажимая кнопку, вы соглашаетесь с политикой использования.</p>
+        </div>
+    </section>
+
+    <!-- 4. ДОКУМЕНТЫ (LEGAL) -->
+    <section id="legal" class="section">
+        <div class="card">
+            <h2>⚖️ ПОЛИТИКА ИСПОЛЬЗОВАНИЯ И ЛИЦЕНЗИЯ</h2>
+            <p><strong>1. Некоммерческое использование:</strong> Настоящая лицензия строго запрещает использование программного обеспечения NEXUS MARKETING AGENTS в коммерческих целях, для извлечения прибыли или оказания платных услуг третьим лицам.</p>
+            <p><strong>2. Данные:</strong> Введенные вами имя и телефон используются исключительно для идентификации сессии и не передаются третьим лицам.</p>
+            <p><strong>3. Интеллектуальная собственность:</strong> Все права на код, алгоритмы и дизайн принадлежат разработчику.</p>
+        </div>
+        <div class="card">
+            <h2>⚠️ ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ</h2>
+            <p>Программное обеспечение предоставляется "как есть" (AS IS). Разработчик (Потехин Николай Александрович) не несет ответственности за любые прямые или косвенные убытки, упущенную выгоду или потерю данных, возникшие в результате использования данного продукта. Результаты аналитики и прогнозов носят оценочный характер и не являются финансовой рекомендацией.</p>
+        </div>
+        <div class="card">
+            <h2>❓ ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ (FAQ)</h2>
+            <p><strong>В: Как работает пробный период?</strong><br>О: После ввода имени и телефона вам открывается полный доступ к системе ровно на 24 часа.</p>
+            <p><strong>В: Можно ли использовать систему для бизнеса?</strong><br>О: Нет. Данная версия распространяется исключительно по некоммерческой лицензии.</p>
+            <p><strong>В: Как сбросить мои данные?</strong><br>О: Перейдите во вкладку "Настройки" и нажмите кнопку "Сброс данных". Это удалит все следы вашего присутствия в браузере.</p>
+        </div>
+    </section>
+
+    <!-- 5. НАСТРОЙКИ -->
+    <section id="settings" class="section">
+        <div class="card">
+            <h2>⚙️ УПРАВЛЕНИЕ ДАННЫМИ</h2>
+            <p>Вы можете полностью удалить все сохраненные данные о вашей сессии и пробном периоде с этого устройства.</p>
+            <br>
+            <button class="btn btn-danger" onclick="resetAllData()">🗑️ СБРОСИТЬ ВСЕ ДАННЫЕ</button>
+            <div id="reset-alert" class="alert alert-success" style="margin-top: 20px;">Данные успешно сброшены. Страница будет перезагружена.</div>
+        </div>
+    </section>
+
+    <footer>
+        <p><strong>Разработчик и правообладатель:</strong><br>ИП / Самозанятый Потехин Николай Александрович</p>
+        <p>ИНН: 245508705057<br>
+        Email: np2144656@gmail.com<br>
+        Телефон: +7 (905) 970-34-20</p>
+        <p style="margin-top: 20px; color: #333;">© 2024 NEXUS MARKETING AGENTS. ВСЕ ПРАВА ЗАЩИЩЕНЫ.<br>НЕКОММЕРЧЕСКАЯ ЛИЦЕНЗИЯ.</p>
+    </footer>
+</div>
+
+<script>
+    // Конфигурация API (указывает на твой рабочий Deno Deploy бэкенд)
+    const API_BASE_URL = 'https://nexus-77.n49149022.deno.net/api';
+
+    // Проверка состояния при загрузке
+    window.addEventListener('DOMContentLoaded', () => {
+        checkTrialStatus();
+    });
+
+    function showSection(id) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+    }
+
+    function activateTrial(e) {
+        e.preventDefault();
+        const name = document.getElementById('user-name').value.trim();
+        const phone = document.getElementById('user-phone').value.trim();
+        const alertBox = document.getElementById('reg-alert');
+
+        if (!name || !phone) {
+            showAlert(alertBox, 'Пожалуйста, заполните все поля.', 'error');
+            return;
+        }
+
+        // Сохраняем данные локально
+        const now = Date.now();
+        localStorage.setItem('nexus_user_name', name);
+        localStorage.setItem('nexus_user_phone', phone);
+        localStorage.setItem('nexus_trial_start', now.toString());
+        localStorage.setItem('nexus_plan', 'trial');
+
+        // Отправляем данные на бэкенд (опционально, для статистики)
+        fetch(`${API_BASE_URL}/licenses/activate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                key: 'TRIAL-1-DAY-KEY', 
+                device_fingerprint: name + phone 
+            })
+        }).catch(() => {}); // Игнорируем ошибки сети, главное локальное сохранение
+
+        showAlert(alertBox, '✅ Пробный период на 1 день успешно активирован!', 'success');
+        
+        setTimeout(() => {
+            checkTrialStatus();
+            showSection('dashboard');
+            // Обновляем активную вкладку визуально
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.nav-tab')[1].classList.add('active');
+        }, 1000);
+    }
+
+    function checkTrialStatus() {
+        const name = localStorage.getItem('nexus_user_name');
+        const trialStart = localStorage.getItem('nexus_trial_start');
+        const plan = localStorage.getItem('nexus_plan');
+        const statusBadge = document.getElementById('status-display');
+        const displayName = document.getElementById('display-name');
+
+        if (name) {
+            displayName.textContent = name;
+        }
+
+        if (plan === 'pro') {
+            statusBadge.textContent = 'СТАТУС: АКТИВНАЯ ПОДПИСКА';
+            statusBadge.classList.remove('expired');
+            return;
+        }
+
+        if (trialStart) {
+            const hoursPassed = (Date.now() - parseInt(trialStart)) / (1000 * 60 * 60);
+            if (hoursPassed < 24) {
+                const hoursLeft = Math.ceil(24 - hoursPassed);
+                statusBadge.textContent = `СТАТУС: ПРОБНЫЙ ПЕРИОД (ОСТАЛОСЬ ${hoursLeft} Ч.)`;
+                statusBadge.classList.remove('expired');
+            } else {
+                statusBadge.textContent = 'СТАТУС: ПРОБНЫЙ ПЕРИОД ИСТЕК';
+                statusBadge.classList.add('expired');
+            }
+        }
+    }
+
+    function buySubscription() {
+        const name = localStorage.getItem('nexus_user_name');
+        if (!name) {
+            alert('Сначала активируйте пробный период на вкладке "Регистрация".');
+            showSection('onboarding');
+            return;
+        }
+        
+        // Симуляция покупки (в реальном проекте здесь будет редирект на ЮKassa)
+        const confirmBuy = confirm(`Оформить подписку на 1 месяц за 990 ₽?\n\nПользователь: ${name}\n\n(Это демонстрационный режим. В реальной системе здесь откроется платежная форма)`);
+        
+        if (confirmBuy) {
+            localStorage.setItem('nexus_plan', 'pro');
+            localStorage.setItem('nexus_sub_start', Date.now().toString());
+            alert('✅ Подписка успешно оформлена! Добро пожаловать в NEXUS PRO.');
+            checkTrialStatus();
+            showSection('dashboard');
+        }
+    }
+
+    function resetAllData() {
+        if (confirm('ВНИМАНИЕ: Это действие необратимо удалит все ваши данные, имя, телефон и статус подписки с этого устройства. Продолжить?')) {
+            localStorage.clear();
+            const alertBox = document.getElementById('reset-alert');
+            alertBox.classList.add('show');
+            
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        }
+    }
+
+    function showAlert(element, message, type) {
+        element.textContent = message;
+        element.className = `alert alert-${type} show`;
+        setTimeout(() => {
+            element.classList.remove('show');
+        }, 5000);
+    }
+</script>
+</body>
+</html>
