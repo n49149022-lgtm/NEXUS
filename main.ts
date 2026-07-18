@@ -1,20 +1,62 @@
 // ============================================================================
-// NEXUS MARKETING AGENTS v5.0 // DENO DEPLOY EDITION (STRICT TS SAFE)
+// NEXUS MARKETING AGENTS v5.0 // DENO DEPLOY (SMART KV FALLBACK)
 // ============================================================================
 
-const kv = await Deno.openKv();
+// 1. УМНАЯ ИНИЦИАЛИЗАЦИЯ KV (с защитой от падения сборки в Preview)
+let kvInstance: Deno.Kv | null = null;
 
-// --- ТИПЫ ---
+async function getKv(): Promise<Deno.Kv> {
+  if (!kvInstance) {
+    try {
+      kvInstance = await Deno.openKv();
+    } catch (e) {
+      console.warn("⚠️ Deno KV не подключен в этой среде (Preview). Используется временная память.");
+      kvInstance = createMockKv() as unknown as Deno.Kv;
+    }
+  }
+  return kvInstance;
+}
+
+// Заглушка в памяти для режимов без привязанной KV
+function createMockKv() {
+  const store = new Map<string, any>();
+  return {
+    get: async (key: unknown[]) => ({ value: store.get(JSON.stringify(key)) || null, versionstamp: "mock" }),
+    set: async (key: unknown[], value: unknown) => { store.set(JSON.stringify(key), value); return { versionstamp: "mock" }; },
+    delete: async (key: unknown[]) => { store.delete(JSON.stringify(key)); },
+    list: async function* (selector: { prefix?: unknown[]; limit?: number; reverse?: boolean }) {
+      const prefixStr = selector.prefix ? JSON.stringify(selector.prefix) : "";
+      let entries = Array.from(store.entries()).filter(([k]) => k.startsWith(prefixStr));
+      if (selector.reverse) entries.reverse();
+      if (selector.limit) entries = entries.slice(0, selector.limit);
+      for (const [k, v] of entries) {
+        yield { key: JSON.parse(k), value: v, versionstamp: "mock" };
+      }
+    },
+    close: () => {},
+    atomic: () => ({ check: () => ({}), set: () => ({}), delete: () => ({}), sum: () => ({}), min: () => ({}), max: () => ({}), commit: async () => ({ ok: true, versionstamp: "mock" }) }),
+    listenQueue: () => {},
+    enqueue: async () => ({ ok: true })
+  };
+}
+
+// Получаем экземпляр (реальный или мок)
+const kv = await getKv();
+
+// ============================================================================
+// 2. ТИПЫ И УТИЛИТЫ
+// ============================================================================
 interface License { key: string; plan: string; expiresAt: string; deviceFingerprint: string | null; activatedAt: string; userId: string | null; }
 interface AccountSE { id: string; fio: string; inn: string; email: string; phone: string; regDate: string; }
 interface AccountIP { id: string; name: string; inn: string; ogrnip: string; email: string; phone: string; account: string; bank: string; bik: string; address: string; }
 
-// --- УТИЛИТЫ ---
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization" };
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...corsHeaders } });
 const uuid = () => crypto.randomUUID();
 
-// --- МОДУЛЬ 1: АНОНИМИЗАЦИЯ ---
+// ============================================================================
+// 3. МОДУЛИ (Анонимизация, RAG)
+// ============================================================================
 const Anonymizer = {
   patterns: [
     { regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, repl: "[EMAIL]" },
@@ -28,7 +70,6 @@ const Anonymizer = {
   }
 };
 
-// --- МОДУЛЬ 2: RAG (TF-IDF) ---
 const RAGEngine = {
   tokenize: (text: string) => text.toLowerCase().match(/\b\w+\b/g) || [],
   
@@ -99,14 +140,16 @@ const RAGEngine = {
   }
 };
 
-// --- ОБРАБОТЧИК ЗАПРОСОВ ---
+// ============================================================================
+// 4. ОБРАБОТЧИК ЗАПРОСОВ
+// ============================================================================
 async function handleRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const url = new URL(req.url);
   const path = url.pathname;
 
   try {
-    if (req.method === "GET" && path === "/api/health") return json({ status: "ok", runtime: "Deno Deploy" });
+    if (req.method === "GET" && path === "/api/health") return json({ status: "ok", runtime: "Deno Deploy", kv_mode: kvInstance ? "Real" : "Mock" });
 
     if (req.method === "POST" && path === "/api/licenses/activate") {
       const body = await req.json() as { key: string; device_fingerprint: string };
@@ -142,7 +185,9 @@ async function handleRequest(req: Request): Promise<Response> {
     
     if (req.method === "GET" && path === "/api/accounts/selfemployed") {
       const iter = kv.list<AccountSE>({ prefix: ["accounts_se"] }, { limit: 1, reverse: true });
-      return json({ data: (await iter.next()).value || null });
+      const items = [];
+      for await (const entry of iter) items.push(entry.value);
+      return json({ data: items[0] || null });
     }
 
     if (req.method === "POST" && path === "/api/accounts/ip") {
@@ -154,7 +199,9 @@ async function handleRequest(req: Request): Promise<Response> {
 
     if (req.method === "GET" && path === "/api/accounts/ip") {
       const iter = kv.list<AccountIP>({ prefix: ["accounts_ip"] }, { limit: 1, reverse: true });
-      return json({ data: (await iter.next()).value || null });
+      const items = [];
+      for await (const entry of iter) items.push(entry.value);
+      return json({ data: items[0] || null });
     }
 
     if (req.method === "DELETE" && path === "/api/accounts/all") {
@@ -228,5 +275,5 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 }
 
-// Fixed strict TS types for Deno Deploy build - v2
+// Запуск сервера
 Deno.serve(handleRequest);
