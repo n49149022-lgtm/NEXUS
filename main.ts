@@ -1,5 +1,5 @@
 // ============================================================================
-// NEXUS MARKETING AGENTS v5.0 // DENO DEPLOY EDITION
+// NEXUS MARKETING AGENTS v5.0 // DENO DEPLOY EDITION (STRICT TS FIXED)
 // Pure TypeScript, Deno KV, No LLM, Mathematical RAG (TF-IDF)
 // ============================================================================
 
@@ -90,18 +90,19 @@ const RAGEngine = {
     const tf: Record<string, number> = {};
     tokens.forEach((t) => { tf[t] = (tf[t] || 0) + 1; });
     
-    const maxTf = Math.max(...Object.values(tf), 1);
+    // ИСПРАВЛЕНИЕ 1: Явное приведение типов для Math.max
+    const tfValues = Object.values(tf);
+    const maxTf = tfValues.length > 0 ? Math.max(...tfValues) : 1;
+    
     const tfNorm: Record<string, number> = {};
     for (const [token, count] of Object.entries(tf)) {
       tfNorm[token] = count / maxTf;
     }
 
-    // Обновляем глобальный счетчик документов и IDF
     const metaRes = await kv.get<{ N: number }>(["meta", "rag"]);
     const N = (metaRes.value?.N || 0) + 1;
     await kv.set(["meta", "rag"], { N });
 
-    // Обновляем инвертированный индекс
     for (const token of new Set(tokens)) {
       const idxRes = await kv.get<{ docIds: string[] }>(["index", token]);
       const docIds = idxRes.value?.docIds || [];
@@ -111,7 +112,6 @@ const RAGEngine = {
       }
     }
 
-    // Сохраняем вектор документа
     await kv.set(["documents", docId], { text: text.substring(0, 50000), tf: tfNorm, N });
   },
 
@@ -120,7 +120,10 @@ const RAGEngine = {
     const qTf: Record<string, number> = {};
     qTokens.forEach((t) => { qTf[t] = (qTf[t] || 0) + 1; });
     
-    const maxQTf = Math.max(...Object.values(qTf), 1);
+    // ИСПРАВЛЕНИЕ 1 (применено снова)
+    const qTfValues = Object.values(qTf);
+    const maxQTf = qTfValues.length > 0 ? Math.max(...qTfValues) : 1;
+    
     const metaRes = await kv.get<{ N: number }>(["meta", "rag"]);
     const N = metaRes.value?.N || 1;
 
@@ -132,7 +135,6 @@ const RAGEngine = {
       qVector[token] = (count / maxQTf) * idf;
     }
 
-    // Собираем все уникальные docId из запроса
     const candidateDocs = new Set<string>();
     for (const token of Object.keys(qVector)) {
       const idxRes = await kv.get<{ docIds: string[] }>(["index", token]);
@@ -189,8 +191,12 @@ const LogParser = {
       }
     }
 
-    const sortDesc = (obj: Record<string, number>) => 
-      Object.entries(obj).sort(([, a], [, b]) => b - a).slice(0, 5).reduce((r, [k, v]) => ({ ...r, [k]: v }), {});
+    // ИСПРАВЛЕНИЕ 2: Явные типы для sort и reduce, чтобы строгий TS не падал
+    const sortDesc = (obj: Record<string, number>): Record<string, number> =>
+      Object.entries(obj)
+        .sort(([, a]: [string, number], [, b]: [string, number]) => b - a)
+        .slice(0, 5)
+        .reduce<Record<string, number>>((r, [k, v]) => ({ ...r, [k]: v }), {});
 
     return {
       entriesCount: stats.total,
@@ -212,12 +218,10 @@ async function handleRequest(req: Request): Promise<Response> {
   const method = req.method;
 
   try {
-    // 1. Health Check
     if (method === "GET" && path === "/api/health") {
       return jsonResponse({ status: "ok", runtime: "Deno Deploy" });
     }
 
-    // 2. Лицензии
     if (method === "POST" && path === "/api/licenses/activate") {
       const body = await req.json() as { key: string; device_fingerprint: string };
       const key = body.key.toUpperCase().trim();
@@ -246,7 +250,6 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ valid: true, plan: res.value.plan, expiresAt: res.value.expiresAt });
     }
 
-    // 3. Аккаунты (Самозанятые)
     if (method === "POST" && path === "/api/accounts/selfemployed") {
       const body = await req.json() as AccountSE;
       const id = generateId();
@@ -259,7 +262,6 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ data: latest.value || null });
     }
 
-    // 4. Аккаунты (ИП)
     if (method === "POST" && path === "/api/accounts/ip") {
       const body = await req.json() as AccountIP;
       const id = generateId();
@@ -272,14 +274,17 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ data: latest.value || null });
     }
 
-    // 5. Очистка данных
     if (method === "DELETE" && path === "/api/accounts/all") {
-      for await (const entry of kv.list({ prefix: ["accounts_se"] })) await kv.delete(entry.key);
-      for await (const entry of kv.list({ prefix: ["accounts_ip"] })) await kv.delete(entry.key);
+      // ИСПРАВЛЕНИЕ 3: Явный тип <unknown> для kv.list при удалении
+      for await (const entry of kv.list<unknown>({ prefix: ["accounts_se"] })) {
+        await kv.delete(entry.key);
+      }
+      for await (const entry of kv.list<unknown>({ prefix: ["accounts_ip"] })) {
+        await kv.delete(entry.key);
+      }
       return jsonResponse({ status: "success", message: "All accounts purged" });
     }
 
-    // 6. Миссии
     if (method === "POST" && path === "/api/missions") {
       const body = await req.json() as Omit<Mission, "id">;
       const id = generateId();
@@ -287,48 +292,44 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ status: "success", id });
     }
 
-    // 7. Анонимизация
     if (method === "POST" && path === "/api/anonymize") {
       const { text } = await req.json() as { text: string };
       return jsonResponse({ original_length: text.length, anonymized: Anonymizer.anonymize(text) });
     }
 
-    // 8. RAG: Индексация
     if (method === "POST" && path === "/api/index/build") {
       const { doc_id, text } = await req.json() as { doc_id: string; text: string };
       await RAGEngine.buildIndex(doc_id, text);
       return jsonResponse({ status: "success", doc_id });
     }
 
-    // 9. RAG: Поиск
     if (method === "POST" && path === "/api/search") {
       const { query, top_k = 3 } = await req.json() as { query: string; top_k?: number };
       return jsonResponse({ results: await RAGEngine.search(query, top_k) });
     }
 
-    // 10. Парсинг логов
     if (method === "POST" && path === "/api/logs/parse") {
       const { log_text } = await req.json() as { log_text: string };
       return jsonResponse(LogParser.parse(log_text));
     }
 
-    // 11. Анализ логов (Артефакты)
     if (method === "POST" && path === "/api/logs/analyze") {
       const { log_text } = await req.json() as { log_text: string };
       const parsed = LogParser.parse(log_text);
       const total = parsed.entriesCount;
       const errors = Object.entries(parsed.stats.statusCodes)
         .filter(([code]) => code.startsWith("4") || code.startsWith("5"))
-        .reduce((sum, [, count]) => sum + count, 0);
+        .reduce((sum, [, count]) => sum + (count as number), 0);
       const errorRate = total > 0 ? (errors / total) * 100 : 0;
 
-      const artifacts = [];
-      if (errorRate > 10) artifacts.push({ type: "anomaly", title: "High Error Rate", content: `Error rate is ${errorRate.toFixed(2)}%` });
+      const artifacts: { type: string; title: string; content: string }[] = [];
+      if (errorRate > 10) {
+        artifacts.push({ type: "anomaly", title: "High Error Rate", content: `Error rate is ${errorRate.toFixed(2)}%` });
+      }
       
       return jsonResponse({ parsed, artifacts, errorRate: Number(errorRate.toFixed(2)) });
     }
 
-    // 12. Платежи (Мок)
     if (method === "POST" && path === "/api/payments/create") {
       const body = await req.json() as { plan: string; amount: number | string; payment_method: string };
       const amount = typeof body.amount === "string" ? parseFloat(body.amount) : (body.amount || (body.plan === "pro" ? 4999 : 24999));
@@ -351,21 +352,21 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    // 13. Экспорт
     if (method === "GET" && path.startsWith("/api/export/")) {
       const type = path.split("/").pop();
       return jsonResponse({ type, timestamp: new Date().toISOString(), data: "mock_exported_data_from_deno_kv" });
     }
 
-    // 14. Загрузка файлов (для RAG или логов)
     if (method === "POST" && path === "/api/documents/upload") {
       const formData = await req.formData();
-      const file = formData.get("file") as File;
-      const docId = formData.get("doc_id") as string || generateId();
+      const file = formData.get("file");
+      const docId = (formData.get("doc_id") as string) || generateId();
       
-      if (!file) return jsonResponse({ error: "No file provided" }, 400);
+      if (!file || !(file instanceof File)) {
+        return jsonResponse({ error: "No valid file provided" }, 400);
+      }
+      
       const text = await file.text();
-      
       if (text.length > 50000) {
         return jsonResponse({ error: "File too large for Deno KV (max ~50KB). Use external storage for larger files." }, 413);
       }
